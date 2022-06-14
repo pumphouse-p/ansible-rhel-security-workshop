@@ -195,6 +195,25 @@
       name: httpd
       state: started
       enabled: True  
+
+  - name: Enable the mod_rewrite Apache module 
+    community.general.apache2_module:
+      state: present
+      name: rewrite
+      ignore_configcheck: True
+    notify: restart apache
+
+  - name: Configure http redirect
+    ansible.builtin.blockinfile:
+      path: "{{ apache_config_file }}"
+      insertafter: "## SSL Virtual Host Context"
+      block: |
+        <VirtualHost *:80>
+        RewriteEngine On
+        RewriteCond %{HTTPS} off
+        RewriteRule (.*) https://%{SERVER_NAME}
+        </VirtualHost>
+    notify: restart apache
       
   handlers:
   - name: restart apache
