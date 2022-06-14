@@ -86,6 +86,38 @@
     notify:
     - restart mysql
 
+  - name: Read the generated password
+    ansible.builtin.slurp:
+      src: "{{ mysql_db_password_file }}"
+    register: mysql_password
+
+  - name: Setting host facts for the mysql password
+    ansible.builtin.set_fact:
+      webapp_password: "{{ mysql_password['content'] | b64decode | trim }}"
+
+  - name: Read the generated ca-cert.pem file
+    ansible.builtin.slurp:
+      src: "{{ mariadb_certs_path }}/{{ mariadb_ca_cert_name }}"
+    register: cacert
+
+  - name: Setting host facts for the CA cert
+    ansible.builtin.set_fact:
+      cacert_contents: "{{ cacert['content'] | b64decode | trim }}"
+
+  - name: Modifying the Application DB User to require SSL
+    community.mysql.mysql_user:
+      login_host: localhost
+      login_port: "{{ mariadb_port }}"
+      login_user: root
+      login_password: "{{ webapp_password }}"
+      name: "{{ mariadb_username }}"
+      host: '%'
+      password: "{{ webapp_password }}"
+      priv: '*.*:ALL'
+      tls_requires:
+        ssl:
+      state: present
+
   handlers:
   - name: restart mysql
     ansible.builtin.service:
