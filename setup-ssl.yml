@@ -1,0 +1,94 @@
+---
+- name: Configure SSL on mysql
+  hosts: "{{ mariadb_host }}"
+  gather_facts: False
+  vars_files: vars/ssl-vars.yml
+  tags: 
+  - mysql
+  become: True
+
+  tasks:
+     
+  - name: Make sure that the directory to hold keys and certs exist
+    ansible.builtin.file:
+      path: "{{ mariadb_certs_path }}"
+      state: directory
+
+  - name: Generate a new 2048 bit key
+    community.crypto.openssl_privatekey:
+      path: "{{ mariadb_certs_path }}/{{ mariadb_ca_key_name }}"
+      size: 2048
+      group: "{{ mariadb_system_user }}"
+      owner: "{{ mariadb_system_group }}"
+      mode: 0660
+    register: ca_key
+
+  - name: Create certificate signing request (CSR) for CA certificate
+    community.crypto.openssl_csr_pipe:
+      privatekey_path: "{{ ca_key.filename }}"
+      common_name: "{{ inventory_hostname }}"
+      use_common_name_for_san: false  
+      basic_constraints:
+        - 'CA:TRUE'
+    register: ca_csr
+
+  - name: Create The CA self-signed certificate
+    community.crypto.x509_certificate:
+      path: "{{ mariadb_certs_path }}/{{ mariadb_ca_cert_name }}"
+      csr_content: "{{ ca_csr.csr }}"
+      privatekey_path: "{{ ca_key.filename }}"
+      provider: selfsigned
+      group: "{{ mariadb_system_user }}"
+      owner: "{{ mariadb_system_group }}"
+      mode: 0660
+    register: ca_crt
+
+  - name: Create the private key for the server
+    community.crypto.openssl_privatekey:
+      path: "{{ mariadb_certs_path }}/{{ mariadb_server_key_name }}"
+      size: 2048
+      group: "{{ mariadb_system_user }}"
+      owner: "{{ mariadb_system_group }}"
+      mode: 0660
+    register: server_key
+
+  - name: Create certificate signing request  for Server certificate
+    community.crypto.openssl_csr_pipe:
+      privatekey_path: "{{ server_key.filename }}"
+      common_name: "{{ inventory_hostname }}.example.com"
+      use_common_name_for_san: false  
+    register: server_csr
+
+  - name: Sign thethe CSR for the server
+    community.crypto.x509_certificate:
+      path: "{{ mariadb_certs_path }}/{{ mariadb_server_cert_name }}"
+      csr_content:  "{{ server_csr.csr }}"
+      provider: ownca
+      ownca_path: "{{ ca_crt.filename }}"
+      ownca_privatekey_path: "{{ ca_key.filename }}"
+      group: "{{ mariadb_system_user }}"
+      owner: "{{ mariadb_system_group }}"
+      mode: 0660
+    register: ca_crt
+
+  - name: Configure custom port and remote listening and enable SSL
+    ansible.builtin.blockinfile:
+      path: "{{ mariadb_config_file }}"
+      insertafter: "[mysqld]"
+      block: |
+        #BIND ADDRESS AND PORT
+        bind-address=0.0.0.0
+        port={{ mariadb_port }}
+        #SSL CONFIG
+        ssl-ca={{ mariadb_certs_path }}/{{ mariadb_ca_cert_name }}
+        ssl-cert={{ mariadb_certs_path }}/{{ mariadb_server_cert_name }}
+        ssl-key={{ mariadb_certs_path }}/{{ mariadb_server_key_name }}
+    notify:
+    - restart mysql
+
+  handlers:
+  - name: restart mysql
+    ansible.builtin.service:
+      name: mariadb
+      state: restarted
+      enabled: True  
