@@ -1,0 +1,21 @@
+<?php
+/**
+ * @var string $servername
+ * @var string $port
+ * @var string $username
+ * @var string $password
+ * @var string $dbname
+ * @var string $sslca
+ */
+$servername = "{{ mariadb_host }}.example.com";
+$port = "{{ mariadb_port }}";
+$username = "{{ mariadb_username }}";
+$password = "{{ hostvars[mariadb_host]['webapp_password'] }}";
+$dbname = "{{ mariadb_db_name }}";
+$sslca = "{{ apache_host_docroot }}/{{ mariadb_ca_cert_name }}";
+$options = array(
+    PDO::MYSQL_ATTR_INIT_COMMAND => 'SET NAMES utf8',
+    PDO::MYSQL_ATTR_SSL_CA => $sslca,
+    PDO::MYSQL_ATTR_SSL_VERIFY_SERVER_CERT => true
+);
+?>
