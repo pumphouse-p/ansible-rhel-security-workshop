@@ -124,3 +124,22 @@
       name: mariadb
       state: restarted
       enabled: True  
+
+- name: Configure SSL for apache
+  hosts: "{{ apache_host }}"
+  gather_facts: False
+  vars_files: vars/ssl-vars.yml
+  tags: 
+  - apache
+  become: True
+  tasks:
+  - name: Create a file with the contents of the ca cert generated on the mariaDB host
+    ansible.builtin.copy:
+      content: "{{ hostvars[mariadb_host]['cacert_contents'] }}"
+      dest: "{{ apache_host_docroot }}/{{ mariadb_ca_cert_name }}"
+      
+  - name: copy vars php template
+    ansible.builtin.template:
+      src: templates/dbvars.php.j2
+      dest: "{{ apache_host_docroot }}/dbvars.php"
+
